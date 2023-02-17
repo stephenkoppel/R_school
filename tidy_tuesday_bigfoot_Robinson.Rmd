@@ -1,0 +1,224 @@
+---
+title: "tidy_tuesday_big_foot_robinson"
+author: "Stephen Koppel"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(janitor)
+library(scales)
+library(lubridate)
+library(maps)
+library(ggthemes)
+library(gganimate)
+theme_set(theme_light())
+
+
+
+```
+
+
+
+```{r}
+
+bigfoot <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2022/2022-09-13/bigfoot.csv')
+
+```
+
+```{r}
+bigfoot %>% 
+  summary()
+
+```
+```{r}
+
+# for mutations that I descide on as I process the data 
+
+bigfoot <- bigfoot %>% 
+  clean_names() %>% 
+  mutate(season = na_if(season, "Unknown")) %>% 
+  mutate(title  = str_remove(title, "Report \\d+\\: " )) %>% 
+  mutate(year = year(date)) %>% 
+  mutate(season = fct_relevel(season, c("Spring", "Summer", "Fall", "Winter")))
+
+```
+
+
+
+```{r}
+
+# do a little counting
+
+bigfoot %>% 
+  count(season, sort = TRUE)
+
+# will drop out Unknowns above
+
+
+```
+
+```{r}
+
+# removed report number
+
+bigfoot %>% 
+  select(title) %>% 
+  head(20)
+
+```
+
+```{r}
+
+bigfoot %>% 
+  count(classification)
+```
+ 
+```{r}
+
+bigfoot %>% 
+  filter(year >= 1950) %>% 
+  ggplot(aes(year, fill = classification)) +
+  geom_bar()
+
+```
+ 
+```{r}
+
+bigfoot %>% 
+  count(state, sort = TRUE)
+
+```
+
+```{r}
+
+
+bigfoot %>% 
+  filter(state != "Alaska") %>% 
+  filter(longitude >= -130) %>% 
+  ggplot(aes(longitude, latitude, color = year))+ 
+  geom_point(size = .5) + 
+  borders("state") + 
+  theme_map() +
+  coord_map() +
+  labs(title = "Bigfoot Sightings")
+  
+  
+```
+
+```{r}
+
+
+bigfoot_filtered <- bigfoot %>% 
+  filter(state != "Alaska", 
+         longitude >= -130,
+         year >= 1950) 
+
+```
+
+```{r}
+
+bigfoot_animated <- bigfoot_filtered %>% 
+  filter(classification != "Class C") %>% 
+  ggplot(aes(longitude, latitude, color = classification)) + 
+  borders("state") +
+  geom_point(size = .5) +
+  theme_map() +
+  coord_map() +
+  transition_manual(year, cumulative = TRUE) +
+  labs (title = "Bigfoot Sightings: {current_frame}")
+
+animate(bigfoot_animated, renderer = gifski_renderer())
+  
+```
+
+```{r}
+
+bigfoot_filtered %>% 
+  mutate(state = fct_lump(state, 8)) %>% 
+  mutate(state = fct_infreq(state)) %>% 
+  ggplot(aes(5 * year %/% 5)) + # creates 5 year bins
+  geom_bar() +
+  facet_wrap(~state, scales = "free") +
+  labs (x = "Year", y = "# of sightings in 5-year period")
+
+
+```
+
+```{r}
+
+bigfoot %>% 
+  filter(!is.na(season)) %>% 
+  ggplot(aes(year, fill = season)) +
+  geom_bar() +
+  facet_wrap(~season)
+
+```
+
+```{r}
+
+bigfoot %>% 
+  filter(!is.na(season)) %>% 
+  count(season, state = fct_lump(state, 8)) %>% 
+  mutate(state = fct_reorder(state, n, sum)) %>% 
+  ggplot(aes(n, season)) + 
+  geom_col() + 
+  facet_wrap(~state, scales = "free_x")
+
+
+```
+
+```{r}
+
+bigfoot %>% 
+  drop_na(date) %>% 
+  count(month = month(date, label = TRUE)) %>% 
+  ggplot(aes(month, n)) + 
+  geom_col()
+
+```
+
+# machine learning - predicting class (a vs b) based on features of the data
+
+```{r}
+library(tidymodels)
+
+# split
+
+set.seed(2022)
+bigfoot_spl <- bigfoot %>% 
+  filter(classification != "Class C") %>% 
+  initial_split()
+  
+bigfoot_spl
+```
+
+```{r}
+
+
+
+bigfoot_train <- training(bigfoot_spl)
+bigfoot_test <- testing(bigfoot_spl)
+
+```
+
+```{r}
+
+bigfoot_train_fold5 <- bigfoot_train %>% 
+  vfold_cv(5)
+
+```
+
+```{r}
+
+# classification is the dv here, use + to add more predictors
+
+recipe(classification ~ season + year, bigfoot_train) %>% 
+  workflow(logistic_reg()) %>% 
+  fit_resamples(bigfoot_train_fold5, metrics = metric_set(roc_auc)) %>% 
+  collect_metrics()
+
+```
+
