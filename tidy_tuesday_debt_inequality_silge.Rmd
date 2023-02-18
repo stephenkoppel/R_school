@@ -1,0 +1,110 @@
+---
+title: "tidy_tuesday_student_debt_silge"
+author: "Stephen Koppel"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(tidyverse)
+theme_set(theme_light())
+install.packages("tidytuesdayR")
+library(tidytuesdayR)
+
+
+```
+
+```{r}
+
+student_debt <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2021/2021-02-09/student_debt.csv')
+
+
+```
+```{r}
+
+student_debt %>% 
+  summary()
+
+```
+
+
+```{r}
+
+student_debt
+
+```
+
+```{r}
+
+student_debt %>% 
+count(year)
+
+```
+
+
+
+```{r}
+student_debt %>% 
+  ggplot(aes(year, loan_debt_pct, color = race)) +
+  geom_point(size = 3, alpha = 0.8) +
+  geom_smooth(method = "lm", se = FALSE) +
+  labs(x = NULL, y = "% of families with student loan debt")
+
+
+```
+
+```{r}
+
+library(tidymodels)
+
+# specify basic linear model (could also use bayesian w/ stan)
+
+lm_spec <- linear_reg() %>% 
+  set_engine("lm")
+
+
+```
+
+```{r}
+lm_fit <- lm_spec %>% 
+  fit(loan_debt_pct ~ year * race, data = student_debt)
+
+lm_fit
+  
+```
+```{r}
+tidy(lm_fit)
+
+```
+
+```{r}
+
+# create new data points based on predictions from the model
+
+new_points <- crossing(race = c("Black", "Hispanic", "White"),
+                       year = 1990:2220)
+
+
+augment(lm_fit, new_data = new_points)
+
+```
+
+```{r}
+
+augment(lm_fit, new_data = new_points) %>% 
+  ggplot(aes(year, .pred, color = race)) +
+  geom_line(size = 1.2 , alpha = 0.8) +
+  geom_point() +
+  labs (x = NULL,
+        y = "Modeled values",
+        color = NULL)
+
+
+```
+
+
