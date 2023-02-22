@@ -1,0 +1,124 @@
+---
+title: "Index crime by precinct"
+author: "Stephen Koppel"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+complaints <- read_csv("nypd_complaints.csv") %>% 
+  clean_names() %>% 
+    mutate(date = as.Date(cmplnt_fr_dt, format = "%m/%d/%Y"),
+         year = year(date)) %>% 
+  select(severity = law_cat_cd, charge = ofns_desc, date, year, precinct = addr_pct_cd)
+
+complaints_historic <- read_csv("nypd_complaints_historic.csv") %>% 
+  clean_names() %>% 
+    mutate(date = as.Date(cmplnt_fr_dt, format = "%m/%d/%Y"),
+         year = year(date)) %>% 
+  select(severity = law_cat_cd, charge = ofns_desc, date, year, precinct = addr_pct_cd)
+  
+full_complaints <- bind_rows(complaints, complaints_historic)
+
+
+```
+
+
+```{r}
+
+full_complaints <- full_complaints %>% 
+  mutate(index_crime = if_else(severity == "FELONY" &
+         charge %in% c("BURGLARY",
+                          "GRAND LARCENY",
+                          "GRAND LARCENY OF MOTOR VEHICLE", 
+                          "FELONY ASSAULT", 
+                          "MURDER & NON-NEGL. MANSLAUGHTER", 
+                          "RAPE",
+                          "ROBBERY"), "TRUE", "FALSE")) 
+
+
+```
+
+
+```{r}
+
+index_by_precinct <- full_complaints %>% 
+  filter(year >= 2006,
+         index_crime == "TRUE") %>% 
+  group_by(year, precinct) %>% 
+  summarize(n_index = n())
+
+```
+
+
+```{r}
+
+index_by_precinct
+
+```
+
+
+```{r}
+
+
+index_by_precinct %>% 
+  mutate(precinct = as.factor(precinct)) %>% 
+  drop_na(precinct) %>% 
+  ggplot(aes(x = year, y = n_index, color = precinct)) +
+  geom_line(alpha = .5) +
+  labs(x = "Year", y = "# index crimes", title = "Index Crime by Precinct: 2006-2022") +
+  theme(legend.position = "null")
+
+
+```
+```{r}
+
+index_by_precinct %>% 
+  pivot_wider(names_from = year, values_from = n_index) %>% 
+  clean_names() %>% 
+  slice_max(x2022, n = 10) 
+
+```
+
+
+```{r}
+
+index_by_precinct %>% 
+  pivot_wider(names_from = year, values_from = n_index) %>% 
+  clean_names() %>% 
+  slice_max(x2022, n = 10) %>% 
+  pivot_longer(cols = starts_with("x"), names_to = "year", values_to = "n_index") %>% 
+  mutate(year = str_sub(year, 2, 5),
+         year = as.numeric(year),
+         precinct = as.factor(precinct))
+
+```
+
+
+```{r}
+
+index_by_precinct %>% 
+  pivot_wider(names_from = year, values_from = n_index) %>% 
+  clean_names() %>% 
+  slice_max(x2022, n = 10) %>% 
+  pivot_longer(cols = starts_with("x"), names_to = "year", values_to = "n_index") %>% 
+  mutate(year = str_sub(year, 2, 5),
+         year = as.numeric(year),
+         precinct = as.factor(precinct)) %>% 
+  ggplot(aes(x = year, y = n_index, color = precinct)) +
+  geom_point() +
+  geom_line() +
+  facet_wrap(~precinct, nrow = 2) +
+  labs(x = "Year", y = "# Index Crimes", title = "Ten Worst Precincts in 2022 (# index crimes)")+
+  theme(legend.position = "null")
+
+```
+
+
+
+
